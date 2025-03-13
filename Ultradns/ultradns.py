@@ -1,33 +1,42 @@
-register_module_line('Ultradns:Zone Checker - Tesco -v1', 'start', __line__())
+
 ### pack version = 3.0.15'
 '''IMPORTS'''
 import requests
 import json
 
+'''ENDPOINTS/PARAMS'''
 # API endpoints
 login_url = "https://api.ultradns.com/authorization/token"
-api_url = "https://api.ultradns.com/zones"
+api_url = "https://api.ultradns.com/v3/zones/?limit=1000"
 
 # Credentials
-USERNAME = "your_username"
-PASSWORD = "your_password"
+username = ""
+password = ""
 grant_type = "password"
 
 # Function to get auth token
-def get_auth_token(login_url, username, password):
+def get_auth_token(login_url, username, password, grant_type):
     try:
-        response = requests.post(login_url, json={"username": username, "password": password})
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {"username": username, "password": password, "grant_type": grant_type}
+        response = requests.post(login_url, headers=headers, data=data)
         response.raise_for_status()
-        return response.json().get("token")
+        return response.json().get("access_token")
     except requests.exceptions.RequestException as e:
         print(f"Error getting auth token: {e}")
         return None
 
+# if __name__ == "__main__":
+#     token = get_auth_token(login_url, username, password, grant_type)
+#     if token:
+#         print(f"Authentication successful! Token: {token}")
+#         exit()
+
 # Function to make authenticated API call and collect response
-def fetch_data(url, token):
+def fetch_data(api_url, token):
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(api_url, headers=headers)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -44,8 +53,8 @@ def store_data(data, filename="api_response.json"):
         print(f"Error saving data: {e}")
 
 if __name__ == "__main__":
-    token = get_auth_token(LOGIN_URL, USERNAME, PASSWORD)
+    token = get_auth_token(login_url, username, password, grant_type)
     if token:
-        data = fetch_data(API_URL, token)
+        data = fetch_data(api_url, token)
         if data:
             store_data(data)
