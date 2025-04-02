@@ -1,80 +1,120 @@
 register_module_line('Ultradns:Zone Checker -v1', 'start', __line__())
 ### pack version = 3.0.15'
+"""This Integration allows a user to check DNS zone records for assets (domains/ips)
+owned by organisations and managed within the Ultradns platform.
+
+Requirements
+To use this integration ther user will need the following
+## Organisation account with Ultradns
+## User account (API access only)
+## Account passowrd
+
+This credentials will be need to create an authorisation bearer token which will be
+used for evry api call """
+
 '''IMPORTS'''
 import requests
 import json
+
 
 '''ENPOINTS/PARAMS'''
 # API endpoints
 login_url = demisto.params().get('login_url')
 api_url = demisto.params().get('api_url')
+status_url = demisto.params().get('status_url')
 
 # Credentials
 username = demisto.params().get('username')
 password = demisto.params().get('password')
 grant_type = "password"
 
+
 # Function to get auth token
-def get_auth_token(login_url, username, password):
+def get_auth_token():
     try:
-        response = requests.post(login_url, json={"username": username, "password": password})
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {"username": username, "password": password, "grant_type": grant_type}
+        response = requests.post(login_url, headers=headers, data=data)
         response.raise_for_status()
-        return response.json().get("token")
+        return response.json().get("access_token")
     except requests.exceptions.RequestException as e:
         print(f"Error getting auth token: {e}")
         return None
 
 # Function to check zone records within zone and return response
-def get_zone_props(api_url, token):
-    headers = {"Authorization": f"Bearer {token}"}
-    try:
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data: {e}")
-        return None
-    
+def ultradns_get_zone_props():
+    api_token = get_auth_token()
+    headers = {"Authorization": f"Bearer {api_token}"}
+
+    response = requests.get(api_url, headers=headers)
+
+    if response.status_code == 200:
+        j = response.json()
+        command_results = CommandResults(outputs_prefix='DNS.Zones', outputs=j)
+        return command_results
+
+    else:
+        error_msg = f'Error in API call [{response.status_code}] - {response.reason}'
+        return_error(error_msg)
+
 # Function to check domain records within zone and return response
-def get_domain_props():
-    headers = {"Authorization": f"Bearer {token}"}
-    api_url = api_url + domain
-        #Define args
-    args = set_args()
-    domain = args[0]
+def ultradns_get_domain_props():
+    api_token = get_auth_token()
+    domain = demisto.args().get('domain')
+    domain_url = f"{api_url}/{domain}"
+    headers = {"Authorization": f"Bearer {api_token}"}
+
+    response = requests.get(domain_url, headers=headers)
+
+    if response.status_code == 200:
+        try:
+            j = response.json()  # Parse JSON safely
+            if not j:  # Ensure response is not empty
+                return_error("Error: API returned an empty response.")
+
+            command_results = CommandResults(outputs_prefix='Domains.Props', outputs=j)
+            return command_results  # Return the result properly
+        except json.JSONDecodeError:
+            return_error("Error: API response is not valid JSON.")
+
+    else:
+        error_msg = f'Error in API call [{response.status_code}] - {response.reason}'
+        return_error(error_msg)
 
 # Function to make authenticated API call and collect zone response
-def get_ip_props():
-    headers = {"Authorization": f"Bearer {token}"}
-    api_url = api_url + ip
-    #Define args
-    args = set_args()
-    ip = args[0]
+def ultradns_get_ip_props():
+    api_token = get_auth_token()
+    ip = demisto.args().get('ip')
+    headers = {"Authorization": f"Bearer {api_token}"}
+    ip_url = f"{api_url}/{ip}"
 
-# Function to store data in a JSON file
-def store_data(data, filename="api_response.json"):
-    try:
-        with open(filename, "w") as file:
-            json.dump(data, file, indent=4)
-        print(f"Data successfully saved to {filename}")
-    except IOError as e:
-        print(f"Error saving data: {e}")
+    response = requests.get(ip_url, headers=headers)
 
-if __name__ == "__main__":
-    token = get_auth_token(LOGIN_URL, USERNAME, PASSWORD)
-    if token:
-        data = fetch_data(API_URL, token)
-        if data:
-            store_data(data)
+    if response.status_code == 200:
+        try:
+            j = response.json()  # Parse JSON safely
+            if not j:  # Ensure response is not empty
+                return_error("Error: API returned an empty response.")
 
+            command_results = CommandResults(outputs_prefix='Ip.Props', outputs=j)
+            return command_results  # Return the result properly
+        except json.JSONDecodeError:
+            return_error("Error: API response is not valid JSON.")
+
+    else:
+        error_msg = f'Error in API call [{response.status_code}] - {response.reason}'
+        return_error(error_msg)
+
+
+# Test Ultradns connectivity status
 def test_module():
-    api_token = generate_auth_token()
+    api_token = get_auth_token()
 
-    params = {'clusterId': clusterId}
+    # params = {'status_url': status_url}
     headers = {'authorization': f"Bearer {api_token}"}
-    endpointURL = api_url + "orgSafeList?"
+    endpointURL = status_url
 
-    response = requests.get(endpointURL, params=params, headers=headers, verify=False)
+    response = requests.get(endpointURL, headers=headers, verify=False)
 
     if response.status_code == 200:
         return_results('ok')
@@ -85,14 +125,13 @@ def test_module():
 ''' COMMANDS MANAGER / SWITCH PANEL '''
 
 try:
-    if demisto.command() == 'get_domain_props':
-        get_domain_props()
-    elif demisto.command() == 'get_zone_props':
-        get_zone_props()
-    elif demisto.command() == 'get_ip_props':
-        get_ip_props()
+    if demisto.command() == 'ultradns_get_domain_props':
+        return_results(ultradns_get_domain_props())  # Ensure return value is passed
+    elif demisto.command() == 'ultradns_get_zone_props':
+        return_results(ultradns_get_zone_props())
+    elif demisto.command() == 'ultradns_get_ip_props':
+        return_results(ultradns_get_ip_props())
     elif demisto.command() == 'test-module':
-        # This is the call made when pressing the integration test button.
         test_module()
 
 except Exception as err:
