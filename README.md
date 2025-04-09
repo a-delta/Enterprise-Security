@@ -1,2 +1,2 @@
-# soarScripts
+# Security
 security automation scripts
